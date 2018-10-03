@@ -1,4 +1,5 @@
 import numpy as np
+import random
 
 
 class Environment(object):
@@ -64,7 +65,7 @@ class CombinationLock(Environment):
         return 0
 
 class StochasticCombinationLock(Environment):
-    def __init__(self,horizon=5, swap=0.1):
+    def __init__(self, horizon=5, swap=0.1):
         self.horizon=horizon
         self.swap = swap
         self.actions = [0,1]
@@ -96,41 +97,137 @@ class StochasticCombinationLock(Environment):
             return 1
         return 0
 
+class RandomGridWorld(Environment):
+    """
+    A M x M grid with walls and a trembling hand. 
+    Horizon is always 2 M
+    """
+    def __init__(self, M, swap=0.1, noise=0.0):
+        self.M = M
+        self.swap = swap
+        self.noise = noise
+        self.maze = self.generate_maze(self.M)
+        self.horizon = np.count_nonzero(self.maze)
+
+        self.actions = [(0,1), (0,-1), (1,0), (-1,0)]
+        
+        nnz = np.nonzero(self.maze)
+        self.goal = [nnz[0][-1], nnz[1][-1]]
+
+    def generate_maze(self, M):
+        mx = M; my = M
+        maze = np.matrix(np.zeros((mx,my)))
+        dx = [0, 1, 0, -1]; dy = [-1, 0, 1, 0] # 4 directions to move in the maze
+        stack = [(0,0)]
+
+        while len(stack) > 0:
+            (cx, cy) = stack[-1]
+            maze[cy,cx] = 1
+            # find a new cell to add
+            nlst = [] # list of available neighbors
+            for i in range(4):
+                nx = cx + dx[i]; ny = cy + dy[i]
+                if nx >= 0 and nx < mx and ny >= 0 and ny < my:
+                    if maze[ny,nx] == 0:
+                        # of occupied neighbors must be 1
+                        ctr = 0
+                        for j in range(4):
+                            ex = nx + dx[j]; ey = ny + dy[j]
+                            if ex >= 0 and ex < mx and ey >= 0 and ey < my:
+                                if maze[ey,ex] == 1: ctr += 1
+                        if ctr == 1: nlst.append(i)
+            # if 1 or more neighbors available then randomly select one and move
+            if len(nlst) > 0:
+                ir = nlst[random.randint(0, len(nlst) - 1)]
+                cx += dx[ir]; cy += dy[ir]
+                stack.append((cx, cy))
+            else: stack.pop()
+
+        return(maze)
+
+    def start(self):
+        return [0,0]
+
+    def reward(self,x,a):
+        if x == self.goal:
+            return 1
+        return 0
+
+    def transition(self, x, a):
+        nx = x[0]+a[0]
+        ny = x[1]+a[1]
+        if nx < 0 or nx >= self.M or ny < 0 or ny >= self.M:
+            ## Cannot go off the grid
+            return x
+        if self.maze[nx,ny] == 0:
+            ## Cannot enter a wall
+            return x
+        else:
+            z = np.random.binomial(1, self.swap)
+            if z == 1:
+                return x
+            else:
+                return [nx,ny]
+
+    def print_maze(self):
+        maze = self.maze
+        maze[self.state[0], self.state[1]] = 2
+        print(maze)
+        maze[self.state[0], self.state[1]] = 1
+
+
 if __name__=='__main__':
-    E = Environment()
-    rewards = [0,0]
-    counts = [0,0]
-    for t in range(1000):
+    import sys, argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--env', action='store', choices=['MAB', 'combolock', 'stochcombolock', 'maze'])
+    Args = parser.parse_args(sys.argv[1:])
+
+    if Args.env == 'MAB':
+        E = Environment()
+        rewards = [0,0]
+        counts = [0,0]
+        for t in range(1000):
+            x = E.start_episode()
+            while x != None:
+                actions = E.get_actions()
+                a = np.random.choice(actions)
+                (x,r) = E.act(a)
+                rewards[a] += r
+                counts[a] += 1
+        for a in [0,1]:
+            assert (np.abs(np.float(rewards[a])/counts[a] -E.reward_dists[a]) < 0.1)
+
+    if Args.env == 'combolock':
+        E = CombinationLock(horizon=3)
+        print (E.opt)
+        for t in range(10):
+            x = E.start_episode()
+            while x != None:
+                actions = E.get_actions()
+                a = np.random.choice(actions)
+                old = x
+                (x,r) = E.act(a)
+                print(old, a, r, x)
+
+    if Args.env == 'stochcombolock':
+        E = StochasticCombinationLock(horizon=3, swap=0.5)
+        print (E.opt_a)
+        print (E.opt_b)
+        for t in range(10):
+            x = E.start_episode()
+            while x != None:
+                actions = E.get_actions()
+                a = np.random.choice(actions)
+                old = x
+                (x,r) = E.act(a)
+                print(old, a, r, x)
+
+    if Args.env == 'maze':
+        E = RandomGridWorld(M=5,swap=0.0)
         x = E.start_episode()
         while x != None:
+            E.print_maze()
             actions = E.get_actions()
-            a = np.random.choice(actions)
-            (x,r) = E.act(a)
-            rewards[a] += r
-            counts[a] += 1
-    for a in [0,1]:
-        assert (np.abs(np.float(rewards[a])/counts[a] -E.reward_dists[a]) < 0.1)
+            a = np.random.choice(len(actions))
+            (x,r) = E.act(actions[a])
 
-
-    E = CombinationLock(horizon=3)
-    print (E.opt)
-    for t in range(10):
-        x = E.start_episode()
-        while x != None:
-            actions = E.get_actions()
-            a = np.random.choice(actions)
-            old = x
-            (x,r) = E.act(a)
-            print(old, a, r, x)
-
-    E = StochasticCombinationLock(horizon=3, swap=0.5)
-    print (E.opt_a)
-    print (E.opt_b)
-    for t in range(10):
-        x = E.start_episode()
-        while x != None:
-            actions = E.get_actions()
-            a = np.random.choice(actions)
-            old = x
-            (x,r) = E.act(a)
-            print(old, a, r, x)
