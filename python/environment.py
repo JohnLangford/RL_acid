@@ -45,6 +45,16 @@ class Environment(object):
             self.state = self.transition(self.state,a)
         return(self.make_obs(self.state), r)
 
+    def get_num_actions(self):
+        return len(self.actions)
+
+    def is_tabular(self):
+        return True
+
+    def get_dimension(self):
+        assert not self.is_tabular(), "Not a featurized environment"
+        return self.dim
+
 class CombinationLock(Environment):
     def __init__(self, horizon=5):
         self.horizon=horizon
@@ -121,6 +131,9 @@ class RandomGridWorld(Environment):
         print("Size: %dx%d, Start: [%d,%d], Goal: [%d,%d], H: %d, Cells: %d" % (self.M, self.M, 0, 0, self.goal[1], self.goal[0], self.horizon, np.count_nonzero(self.maze)))
         self.print_maze()
 
+    def is_tabular(self):
+        return False
+
     def generate_maze(self, M):
         """ 
         Adapted from http://code.activestate.com/recipes/578356-random-maze-generator/
@@ -179,6 +192,8 @@ class RandomGridWorld(Environment):
         return 0
 
     def transition(self, x, a):
+        if x == self.goal:
+            return None
         nx = x[0]+a[0]
         ny = x[1]+a[1]
         if nx < 0 or nx >= self.M or ny < 0 or ny >= self.M:
