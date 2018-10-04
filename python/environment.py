@@ -1,5 +1,4 @@
 import numpy as np
-import random
 
 
 class Environment(object):
@@ -110,15 +109,17 @@ class RandomGridWorld(Environment):
         self.swap = swap
         self.noise = noise
         self.dim = dim
+        self.seed = 147
+        np.random.seed(self.seed)
+        self.goal = None
 
         self.maze = self.generate_maze(self.M)
+        self.state = None
 
-        ## Maybe horizon is too long?
-        ## TODO: compute path length and set horizon accordingly?
-        self.horizon = np.count_nonzero(self.maze)
         self.actions = [(0,1), (0,-1), (1,0), (-1,0)]
-        nnz = np.nonzero(self.maze)
-        self.goal = [nnz[0][-1], nnz[1][-1]]
+        print("ENV: Generated Random Grid World")
+        print("Size: %dx%d, Start: [%d,%d], Goal: [%d,%d], H: %d, Cells: %d" % (self.M, self.M, 0, 0, self.goal[1], self.goal[0], self.horizon, np.count_nonzero(self.maze)))
+        self.print_maze()
 
     def generate_maze(self, M):
         """ 
@@ -147,10 +148,15 @@ class RandomGridWorld(Environment):
                         if ctr == 1: nlst.append(i)
             # if 1 or more neighbors available then randomly select one and move
             if len(nlst) > 0:
-                ir = nlst[random.randint(0, len(nlst) - 1)]
+                ir = nlst[np.random.randint(0, len(nlst))]
                 cx += dx[ir]; cy += dy[ir]
                 stack.append((cx, cy))
-            else: stack.pop()
+            elif self.goal is None:
+                self.horizon = 2*len(stack)
+                (gx,gy) = stack.pop()
+                self.goal = [gx,gy]
+            else:
+                stack.pop()
 
         return(maze)
 
@@ -178,7 +184,7 @@ class RandomGridWorld(Environment):
         if nx < 0 or nx >= self.M or ny < 0 or ny >= self.M:
             ## Cannot go off the grid
             return x
-        if self.maze[nx,ny] == 0:
+        if self.maze[ny,nx] == 0:
             ## Cannot enter a wall
             return x
         else:
@@ -194,10 +200,12 @@ class RandomGridWorld(Environment):
             for j in range(self.M):
                 if maze[i,j] == 0:
                     print(" ",end="")
+                elif self.state is not None and self.state[0]==j and self.state[1]==i:
+                    print("A",end="")
+                elif self.goal[0]==j and self.goal[1]==i:
+                    print("G",end="")
                 elif maze[i,j] == 1:
-                    print("o",end="")
-                elif self.state is not None and self.state[0]==i and self.state[1]==j:
-                    print("X",end="")
+                    print(".",end="")
             print("")
 
 
@@ -248,8 +256,7 @@ if __name__=='__main__':
                 print(old, a, r, x)
 
     if Args.env == 'maze':
-        E = RandomGridWorld(M=10,swap=0.0, dim=10, noise=0.1)
-        E.print_maze()
+        E = RandomGridWorld(M=3,swap=0.1, dim=2, noise=0.0)
         T = 0
         while True:
             T += 1
@@ -257,8 +264,8 @@ if __name__=='__main__':
             if T % 100 == 0:
                 print("Iteration t = %d" % (T))
             while x is not None:
-                # E.print_maze()
-                # print(x)
+                E.print_maze()
+                print(x)
                 actions = E.get_actions()
                 a = np.random.choice(len(actions))
                 (x,r) = E.act(actions[a])
