@@ -23,17 +23,20 @@ class Environment(object):
     def start_episode(self):
         self.h=0
         self.state = self.start()
-        return self.state
+        return self.make_obs(self.state)
 
     def get_actions(self):
-        if self.state == None:
+        if self.state is None:
             raise Exception("Episode not started")
         if self.h == self.horizon:
             return None
         return self.actions
     
+    def make_obs(self, s):
+        return s
+
     def act(self, a):
-        if self.state == None:
+        if self.state is None:
             raise Exception("Episode not started")
         r = np.random.binomial(1, self.reward(self.state,a))
         self.h += 1
@@ -41,7 +44,7 @@ class Environment(object):
             self.state = None
         else:
             self.state = self.transition(self.state,a)
-        return(self.state, r)
+        return(self.make_obs(self.state), r)
 
 class CombinationLock(Environment):
     def __init__(self, horizon=5):
@@ -50,7 +53,7 @@ class CombinationLock(Environment):
         self.opt = np.random.choice(self.actions,size=self.horizon)
 
     def transition(self, x, a):
-        if x == None:
+        if x is None:
             raise Exception("Not in any state")
         if x[0] == "g" and a==self.opt[x[1]]:
             return("g",x[1]+1)
@@ -73,7 +76,7 @@ class StochasticCombinationLock(Environment):
         self.opt_b = np.random.choice(self.actions,size=self.horizon)
 
     def transition(self,x,a):
-        if x == None:
+        if x is None:
             raise Exception("Not in any state")
         b = np.random.binomial(1,self.swap)
         if x[0] == "a" and a == self.opt_a[x[1]]:
@@ -102,19 +105,25 @@ class RandomGridWorld(Environment):
     A M x M grid with walls and a trembling hand. 
     Horizon is always 2 M
     """
-    def __init__(self, M, swap=0.1, noise=0.0):
+    def __init__(self, M, swap=0.1, dim=2, noise=0.0):
         self.M = M
         self.swap = swap
         self.noise = noise
-        self.maze = self.generate_maze(self.M)
-        self.horizon = np.count_nonzero(self.maze)
+        self.dim = dim
 
+        self.maze = self.generate_maze(self.M)
+
+        ## Maybe horizon is too long?
+        ## TODO: compute path length and set horizon accordingly?
+        self.horizon = np.count_nonzero(self.maze)
         self.actions = [(0,1), (0,-1), (1,0), (-1,0)]
-        
         nnz = np.nonzero(self.maze)
         self.goal = [nnz[0][-1], nnz[1][-1]]
 
     def generate_maze(self, M):
+        """ 
+        Adapted from http://code.activestate.com/recipes/578356-random-maze-generator/
+        """
         mx = M; my = M
         maze = np.matrix(np.zeros((mx,my)))
         dx = [0, 1, 0, -1]; dy = [-1, 0, 1, 0] # 4 directions to move in the maze
@@ -145,6 +154,16 @@ class RandomGridWorld(Environment):
 
         return(maze)
 
+    def make_obs(self,s):
+        if s is None:
+            return None
+        tmp = s.copy()
+        v = np.random.normal(0, self.noise, self.dim)
+        if self.dim > 2:
+            mult = np.random.choice(range(self.M), size=self.dim-2)
+            tmp.extend(mult)
+        return tmp+v
+
     def start(self):
         return [0,0]
 
@@ -171,9 +190,15 @@ class RandomGridWorld(Environment):
 
     def print_maze(self):
         maze = self.maze
-        maze[self.state[0], self.state[1]] = 2
-        print(maze)
-        maze[self.state[0], self.state[1]] = 1
+        for i in range(self.M):
+            for j in range(self.M):
+                if maze[i,j] == 0:
+                    print(" ",end="")
+                elif maze[i,j] == 1:
+                    print("o",end="")
+                elif self.state is not None and self.state[0]==i and self.state[1]==j:
+                    print("X",end="")
+            print("")
 
 
 if __name__=='__main__':
@@ -223,11 +248,20 @@ if __name__=='__main__':
                 print(old, a, r, x)
 
     if Args.env == 'maze':
-        E = RandomGridWorld(M=5,swap=0.0)
-        x = E.start_episode()
-        while x != None:
-            E.print_maze()
-            actions = E.get_actions()
-            a = np.random.choice(len(actions))
-            (x,r) = E.act(actions[a])
-
+        E = RandomGridWorld(M=10,swap=0.0, dim=10, noise=0.1)
+        E.print_maze()
+        T = 0
+        while True:
+            T += 1
+            x = E.start_episode()
+            if T % 100 == 0:
+                print("Iteration t = %d" % (T))
+            while x is not None:
+                # E.print_maze()
+                # print(x)
+                actions = E.get_actions()
+                a = np.random.choice(len(actions))
+                (x,r) = E.act(actions[a])
+                if r == 1:
+                    print("Success: T = %d" % (T))
+                    sys.exit()
