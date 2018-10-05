@@ -56,58 +56,92 @@ class Environment(object):
         return self.dim
 
 class CombinationLock(Environment):
-    def __init__(self, horizon=5):
+    def __init__(self, horizon=5, dim=None):
         self.horizon=horizon
         self.actions = [0,1]
         self.opt = np.random.choice(self.actions,size=self.horizon)
+        if dim is None:
+            self.dim = None
+        else:
+            self.dim = 2*horizon+dim
 
     def transition(self, x, a):
         if x is None:
             raise Exception("Not in any state")
-        if x[0] == "g" and a==self.opt[x[1]]:
-            return("g",x[1]+1)
-        return ("b",x[1]+1)
+        if x[0] == 1 and a==self.opt[x[1]]:
+            return [1,x[1]+1]
+        return [0,x[1]+1]
             
+    def make_obs(self,x):
+        if x is None:
+            return x
+        if self.dim == None:
+            return x
+        else:
+            v = np.zeros(self.dim,dtype=int)
+            v[2*self.horizon:] = np.random.binomial(1,0.5, self.dim-2*self.horizon)
+            v[2*x[1]+x[0]] = 1
+            return (v)
+
     def start(self):
-        return ("g",0)
+        return [1,0]
 
     def reward(self, x, a):
-        if x == ("g",self.horizon-1) and a == self.opt[x[1]]:
-            return 1
+        if x == [1,self.horizon-1] and a == self.opt[x[1]]:
+            return np.random.binomial(1, 0.5)
         return 0
 
+    def is_tabular(self):
+        return (self.dim == None)
+
 class StochasticCombinationLock(Environment):
-    def __init__(self, horizon=5, swap=0.1):
+    def __init__(self, horizon=5, swap=0.1, dim=None):
         self.horizon=horizon
         self.swap = swap
         self.actions = [0,1]
         self.opt_a = np.random.choice(self.actions,size=self.horizon)
         self.opt_b = np.random.choice(self.actions,size=self.horizon)
+        if dim is None:
+            self.dim = None
+        else:
+            self.dim = 3*self.horizon+dim
 
     def transition(self,x,a):
         if x is None:
             raise Exception("Not in any state")
         b = np.random.binomial(1,self.swap)
-        if x[0] == "a" and a == self.opt_a[x[1]]:
+        if x[0] == 0 and a == self.opt_a[x[1]]:
             if b == 0:
-                return(("a", x[1]+1))
+                return([0, x[1]+1])
             else:
-                return(("b", x[1]+1))
-        if x[0] == "b" and a == self.opt_b[x[1]]:
+                return([1, x[1]+1])
+        if x[0] == 1 and a == self.opt_b[x[1]]:
             if b == 0:
-                return(("b", x[1]+1))
+                return([1, x[1]+1])
             else:
-                return(("a", x[1]+1))
+                return([0, x[1]+1])
         else:
-            return(("c", x[1]+1))
+            return([2, x[1]+1])
+
+    def make_obs(self,x):
+        if x is None or self.dim == None:
+            return x
+        else:
+            v = np.zeros(self.dim,dtype=int)
+            v[3*self.horizon:] = np.random.binomial(1, 0.5, self.dim-3*self.horizon)
+            v[3*x[1]+x[0]] = 1
+            return (v)
 
     def start(self):
-        return ("a",0)
+        return [0,0]
 
     def reward(self, x, a):
-        if (x == ("a",self.horizon-1) and a == self.opt_a[x[1]]) or (x == ("b",self.horizon-1) and a == self.opt_b[x[1]]):
-            return 1
+        if (x == [0,self.horizon-1] and a == self.opt_a[x[1]]) or (x == [1,self.horizon-1] and a == self.opt_b[x[1]]):
+            return np.random.binomial(1, 0.5)
         return 0
+
+    def is_tabular(self):
+        return (self.dim == None)
 
 class RandomGridWorld(Environment):
     """
